@@ -1,55 +1,59 @@
-====== Ubiquiti airCube ISP ======
+= Ubiquiti airCube ISP
 
-===== Hardware =====
-==== Info ====
-| **[[wp>Instruction set]]:**                         | [[wp>MIPS architecture|MIPS]]                   |
-| **Vendor:**                                         | [[wp>Qualcomm Atheros]]                         |
-| **[[docs:techref:bootloader]]:**                    | [[docs:techref:bootloader:uboot]]               |
-| **[[docs:techref:hardware:soc|System-On-Chip]]:**   | Qualcomm / Atheros QCA9533-BL3A                 |
-| **[[docs:techref:hardware:cpu|CPU]] @Frq**          | 650MHz                                          |
-| **Flash size:**                                     | 16 MiB                                          |
-| **Flash Chip:**                                     | Macronix MX25L12835FMT                          |
-| **RAM size:**                                       | 64 MiB                                          |
-| **RAM Chip:**                                       | Winbond W9751G6KB-25                            |
-| **Wireless:**                                       | //SoC-integrated//: QCA9533                     |
-| **Ethernet:**                                       | 1 port connected to the CPU                     |
-| **USB:**                                            | No                                              |
-| **Power:**                                          | USB or PoE                                      |
-| **[[docs:techref:hardware:port.serial|Serial]]:**   | [[#Serial|Yes]]                                 |
+== Hardware
 
-{{:media:ubiquiti:aircube_closed.jpg?400|}}
+=== Info
 
-==== Opening the case ====
+|===
+| **Instruction set:**                   | MIPS
+| **Vendor:**                            | Qualcomm Atheros
+| **Bootloader:**                        | U-Boot
+| **System-On-Chip:**                    | Qualcomm / Atheros QCA9533-BL3A
+| **CPU Frq**                            | 650MHz
+| **Flash size:**                        | 16 MiB
+| **Flash Chip:**                        | Macronix MX25L12835FMT
+| **RAM size:**                          | 64 MiB
+| **RAM Chip:**                          | Winbond W9751G6KB-25
+| **Wireless:**                          | __SoC-integrated__: QCA9533
+| **Ethernet:**                          | 1 port connected to the CPU
+| **USB:**                               | No
+| **Power:**                             | USB or PoE
+| **Serial:**                            | via pinheader
+|===
+
+image:pictures/aircube_closed.jpg[width=600]
+
+=== Opening the case
 
 There are two clips on each side (total of eight). See the red arrows in the
 image for the locations. Carefully lift the case right above the transparent LED
 plastic. Note: The surface of the case scratches quite easily. So be careful if
 you want to avoid scratches.
 
-{{:media:ubiquiti:aircube_opened.jpg?400|}}
+image:pictures/aircube_opened.jpg[width=600]
 
-===== Serial =====
+=== Serial
 
-{{:media:ubiquiti:aircube_serial.jpg?400|}}
+image:pictures/aircube_serial.jpg[width=600]
 
 Baudrate: 115200
 
-==== LED-Controller ====
+=== LED-Controller
 
 There is a small 10 pin SONiX 8-Bit microcontroller (8F26E611LA) on the board.
-Analysis with the method every normal person would use: Soldering wires to all
-IO-Pins to hook up a logic analyzer.
+I did an analysis with the method every sane person would use: Soldering wires
+to all IO-Pins to hook up a logic analyzer.
 
-{{:media:ubiquiti:aircube_SONiX_logic_analyzer.jpg?400|}}
+image:pictures/aircube_SONiX_logic_analyzer.jpg[width=600]
 
 The logic analyzer is hooked up in a way that Pin 1 to 7 are analyzed as channel
 1 to 7.
 
-{{:media:ubiquiti:aircube_SONiX_pinout.png?400|}}
+image:pictures/aircube_SONiX_pinout.png[width=600]
 
 Overview over the boot process:
 
-{{:media:ubiquiti:aircube_SONiX_logic_boot.png?400|}}
+image:pictures/aircube_SONiX_logic_boot.png[width=1200]
 
 Pin 2: Seems to control the LED. The PWM on that pin matches the pulsing of the
 LED during boot.
@@ -62,7 +66,7 @@ CPOL = 0, CPHA = 0 (clock low when idle, data valid on rising edge). CS is
 active low. In the following I decode as MSB first. The clock rate is about
 98 kHz.
 
-{{:media:ubiquiti:aircube_SONiX_zoom_to_one_data_byte.png?400|}}
+image:pictures/aircube_SONiX_zoom_to_one_data_byte.png[width=1200]
 
 So the pinout is:
 
@@ -87,9 +91,9 @@ Known MOSI values on SPI (from various patterns / strings in the uh_leds module)
 
 MISO seems to repeat the last sent value.
 
-The original module for the leds (uh_leds) allows to echo a "test" followed by a
-hex number to be put to /proc/sys/uh_leds. That sends the hex number to the SPI
-bus.
+The original module for the leds (+uh_leds+) allows to echo the text +test+
+followed by a hex number to be put to +/proc/sys/uh_leds+. That sends the hex
+number to the SPI bus.
 
 *Assumption:*
 
@@ -102,18 +106,17 @@ Higher two bits set a mode. Lower six bits are a parameter.
   time still follows that calculation.
 * Mode: 10 -> same as 01 but with only a ramp from min to max. Again a slight
   jump in the pattern at 0x100.
-* Mode: 11 -> blinking (off <-> 25%) with a period of (105ms * parameter)
+* Mode: 11 -> blinking (off -> 25% -> off -> 25% -> ...) with a period of 
+  (105ms * parameter)
 
-==== OEM firmware ====
+== OEM firmware
 
 The original firmware is based on OpenWRT.
 
 Tested firmware version: ACB.ar934x.v2.4.0.cb22320.180904.1044
 
-Bootlog:
-
-<WRAP bootlog>
-<nowiki>
+.Bootlog
+----
 U-Boot 1.1.4-s1055 (Sep 19 2017 - 16:00:36)
 
 DRAM:  64 MB
@@ -274,15 +277,13 @@ BusyBox v1.24.1 () built-in shell (ash)
 ubnt@airCube-ISP:/# uname -a
 Linux airCube-ISP 4.1.16 #1 Tue Sep 4 10:44:06 EEST 2018 mips GNU/Linux
 ubnt@airCube-ISP:/# 
-</nowiki>
-</WRAP>\\
+----
 
 You can login with the user `ubnt` and the password printed on the label on the
 bottom of the device.
 
-UBoot:
-
-<nowiki>
+.Infos from U-Boot
+----
 U-Boot 1.1.4-s1055 (Sep 19 2017 - 16:00:36)
 
 DRAM:  64 MB
@@ -340,9 +341,9 @@ defaults:
 mtdids  : nor0=spi0.0
 mtdparts: mtdparts=spi0.0:256k(u-boot),64k(u-boot-env),4096k(kernel),11648k(rootfs),256k(cfg),64k(EEPROM)
 ath> 
-</nowiki>
+----
 
-===== PoE pass through =====
+== PoE pass through
 
 The PoE pass through can most likely be enabled / disabled with GPIO 11. This
 assumption is based on the following:
@@ -350,7 +351,7 @@ assumption is based on the following:
 There is a ubnt_hwctl service in the original firmware that controlls the poe
 passthrough:
 
-<nowiki>
+----
 #!/bin/sh /etc/rc.common
 # Copyright (C) 2015 OpenWrt.org
 
@@ -420,11 +421,11 @@ stop_service()
                 fi
         }
 }
-</nowiki>
+----
 
 This service uses some of the /proc/ubnthal files:
 
-<nowiki>
+----
 ubnt@airCube-ISP:/etc/init.d# cat /proc/ubnthal/board.inc 
 <?
 $board_id="0xe8f7";
@@ -580,4 +581,4 @@ radio.2.chanbw="5,10,20,40,80"
 feature.rssi.leds=0
 feature.ext_reset=0
 ubnt@airCube-ISP:/etc/init.d#
-</nowiki>
+----
