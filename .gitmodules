@@ -1,0 +1,3 @@
+[submodule "Datenblätter/atheros"]
+	path = Datenblätter/atheros
+	url = https://github.com/Deoptim/atheros
