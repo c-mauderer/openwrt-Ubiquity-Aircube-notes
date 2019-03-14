@@ -343,6 +343,191 @@ mtdparts: mtdparts=spi0.0:256k(u-boot),64k(u-boot-env),4096k(kernel),11648k(root
 ath> 
 ----
 
+=== Finding the Original mac Address
+
+.Unchanged ifconfig
+----
+ubnt@airCube-ISP:~# ifconfig -a
+lan0      Link encap:Ethernet  HWaddr B6:FB:E4:63:2C:2D  
+          UP BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+          Interrupt:5 
+
+lo        Link encap:Local Loopback  
+          inet addr:127.0.0.1  Mask:255.0.0.0
+          inet6 addr: ::1/128 Scope:Host
+          UP LOOPBACK RUNNING  MTU:65536  Metric:1
+          RX packets:20 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:20 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:1532 (1.4 KiB)  TX bytes:1532 (1.4 KiB)
+
+wan0      Link encap:Ethernet  HWaddr B4:FB:E4:63:2C:2D  
+          UP BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+          Interrupt:4 
+
+wlan0     Link encap:Ethernet  HWaddr B4:FB:E4:62:2C:2D  
+          UP BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+----
+
+There is a command `progmac` and `progmac2` in the U-Boot. Calling `progmac`
+delivers the following output:
+
+----
+ath> help progmac
+progmac progmac <serno> [<product_id>] - Program the MAC addresses
+                <serno> is the value of the last
+                4 digits (decimal) of the serial number.
+                Optional parameter <product_id> specifies
+                the board's product ID (decimal)
+
+ath> progmac
+
+First 0xff last 0xff sector size 0x10000
+ 255
+write addr: 9fff0000
+ath> boot
+----
+
+Now after booting the `ifconfig` output changes. But it's a little unclear how
+the serial number is processed (even if one is given).
+
+.ifconfig output after progmac
+----
+ubnt@airCube-ISP:~# ifconfig -a
+lan0      Link encap:Ethernet  HWaddr 00:03:7F:11:20:01  
+          BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+          Interrupt:5 
+
+lo        Link encap:Local Loopback  
+          LOOPBACK  MTU:65536  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+wan0      Link encap:Ethernet  HWaddr 00:03:7F:11:20:00  
+          BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+          Interrupt:4 
+
+wlan0     Link encap:Ethernet  HWaddr B4:FB:E4:62:2C:2D  
+          BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+ubnt@airCube-ISP:~# 
+----
+
+`progmac2` seems to be a little more direct:
+
+----
+ath> help progmac2
+progmac2 progmac2 <eth0 mac> <eth1 mac> - Program the MAC addresses
+                  <eth0 mac> is the eth0 MAC address
+                  <eth1 mac> is the eth1 MAC address
+                  MAC address can be in the format
+                  <aa:bb:cc:dd:ee:ff> or <aabbccddeeff>
+ath> progmac2
+Usage:
+progmac2 - Set ethernet MAC addresses
+
+progmac2 <eth0 mac> <eth1 mac>
+ath> progmac2 B4:FB:E4:63:2C:2D B6:FB:E4:63:2C:2D
+b4:fb:e4:63:2c:2d
+b4fbe463 2c2d0000
+b6:fb:e4:63:2c:2d
+b6fbe463 2c2d0000
+
+First 0xff last 0xff sector size 0x10000
+ 255
+write addr: 9fff0000
+ath>
+----
+
+After the addresses are back to normal:
+
+----
+ubnt@airCube-ISP:~# ifconfig -a
+lan0      Link encap:Ethernet  HWaddr B6:FB:E4:63:2C:2D  
+          BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+          Interrupt:5 
+
+lo        Link encap:Local Loopback  
+          LOOPBACK  MTU:65536  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+wan0      Link encap:Ethernet  HWaddr B4:FB:E4:63:2C:2D  
+          BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:100 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+          Interrupt:4 
+
+wlan0     Link encap:Ethernet  HWaddr B4:FB:E4:62:2C:2D  
+          BROADCAST MULTICAST  MTU:1500  Metric:1
+          RX packets:0 errors:0 dropped:0 overruns:0 frame:0
+          TX packets:0 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 txqueuelen:0 
+          RX bytes:0 (0.0 B)  TX bytes:0 (0.0 B)
+
+ubnt@airCube-ISP:~# 
+----
+
+The output of progmac (or progmac2) gives a hint where the addresses are stored:
+
+----
+ath> md 0x9fff0000
+9fff0000: b4fbe463 2c2db6fb e4632c2d e8f70777    ...c,-...c,-...w
+9fff0010: 00024502 ffff000d ffffffff ffffffff    ..E.............
+9fff0020: 41495243 55424500 00000000 00000000    AIRCUBE.........
+9fff0030: 44413652 4a42724e 787773ff ffffffff    DA6RJBrNxws.....
+9fff0040: ffffffff ffffffff ffffffff ffffffff    ................
+9fff0050: 24312434 36314c75 49423924 47376477    $1$461LuIB9$G7dw
+9fff0060: 3162526c 44662f63 4c386542 6144695a    1bRlDf/cL8eBaDiZ
+9fff0070: 5031ffff ffffffff ffffffff ffffffff    P1..............
+9fff0080: ffffffff ffffffff ffffffff ffffffff    ................
+9fff0090: ffffffff ffffffff ffffffff ffffffff    ................
+9fff00a0: ffffffff ffffffff ffffffff ffffffff    ................
+9fff00b0: ffffffff ffffffff ffffffff ffffffff    ................
+9fff00c0: ffffffff ffffffff ffffffff ffffffff    ................
+9fff00d0: ffffffff ffffffff ffffffff ffffffff    ................
+9fff00e0: ffffffff ffffffff ffffffff ffffffff    ................
+9fff00f0: ffffffff ffffffff ffffffff ffffffff    ................
+ath> 
+----
+
+The Address for wan0 is at 0x9fff0000. The one for lan0 is at 0x9fff0006. The
+address for wlan0 is derived from lan0 by clearing the bit at 00:00:00:01:00:00.
+
 == PoE pass through
 
 The PoE pass through can most likely be enabled / disabled with GPIO 11. This
@@ -582,3 +767,5 @@ feature.rssi.leds=0
 feature.ext_reset=0
 ubnt@airCube-ISP:/etc/init.d#
 ----
+
+
