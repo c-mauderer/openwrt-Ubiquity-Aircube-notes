@@ -814,4 +814,82 @@ feature.ext_reset=0
 ubnt@airCube-ISP:/etc/init.d#
 ----
 
+== Flashing OpenWRT
 
+I now have a version of the repository that can build an image:
+
+https://github.com/c-mauderer/openwrt/tree/adac76074a5900f02bfaca76f530e84958533e01
+
+Sadly the first tries flashing that image via the web interface didn't work. The
+same is true for TFTP recovery mode.
+
+The TFTP recovery mode can either be activated by a (really) long press on the
+reset button or by typing `urescue` into the U-Boot console.
+
+For a self-made image the following is printed:
+
+----
+ath> urescue
+eth0 link down
+enet1 port1 up
+dup 1 speed 1000
+Setting default IP 192.168.1.20
+Starting TFTP server...
+Using eth1 (192.168.1.20), address: 0x81000000
+Waiting for connection: |
+Receiving file from 192.168.1.5:59574
+Received 3670020 bytes
+Firmware check failed! (1)
+----
+
+The output when flashing an official Ubiquity image is as follows:
+
+----
+ath> urescue
+eth0 link down
+enet1 port1 up
+dup 1 speed 1000
+Setting default IP 192.168.1.20
+Starting TFTP server...
+Using eth1 (192.168.1.20), address: 0x81000000
+Waiting for connection: -
+Receiving file from 192.168.1.5:40891
+Received 7106306 bytes
+Firmware Version: ACB.ar934x.v2.4.0.cb22320.180904.1044
+ RSA Signed Image. Verifying please wait... 
+ Decrypted Hash:  34 dc df b7 cc c2 da 57 cd 24 5f e1 d5 d4 c7 1a f7 3b d8 94
+ Image Hash:      34 dc df b7 cc c2 da 57 cd 24 5f e1 d5 d4 c7 1a f7 3b d8 94
+ Image Signature Verified, Success.
+Setting U-Boot environment variables
+Un-Protected 1 sectors
+Erasing Flash...Erasing flash... 
+First 0x4 last 0x4 sector size 0x10000
+   4
+Erased 1 sectors
+Writing to Flash... write addr: 9f040000
+done
+Protected 1 sectors
+Valid 'extra' partition found
+Will not use 'u-boot' partition data! Skipped.
+Copying partition 'kernel' to flash memory:
+
+First 0x5 last 0x44 sector size 0x10000
+................................................................ done
+write addr: 9f050000
+Copying partition 'rootfs' to flash memory:
+
+First 0x45 last 0xfa sector size 0x10000
+...................................................................................................................................................................................... done
+write addr: 9f450000
+Will not use 'extras' partition data. Skipped.
+
+Firmware update complete.
+
+U-Boot 1.1.4-s1055 (Sep 19 2017 - 16:00:36)
+
+DRAM:  64 MB
+----
+
+So it seems that there is at least some basic check and after that there is an
+RSA check. Most likely it's not simple to create an image that can be flashed
+that way due to the RSA check.
