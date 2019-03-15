@@ -343,6 +343,29 @@ mtdparts: mtdparts=spi0.0:256k(u-boot),64k(u-boot-env),4096k(kernel),11648k(root
 ath> 
 ----
 
+=== Flash layout
+
+The flash layout is given by the mtdparts U-Boot command in the above log. Alternatively it can be found in the original firmware:
+
+----
+ubnt@airCube-ISP:~# cat /proc/mtd 
+dev:    size   erasesize  name
+mtd0: 00040000 00010000 "u-boot"
+mtd1: 00010000 00010000 "u-boot-env"
+mtd2: 00400000 00010000 "kernel"
+mtd3: 00b60000 00010000 "rootfs"
+mtd4: 00040000 00010000 "cfg"
+mtd5: 00010000 00010000 "EEPROM"
+ubnt@airCube-ISP:~# 
+----
+
+The used
+chip is a NOR flash. So according to
+https://openwrt.org/docs/techref/flash.layout it's possible to use a SquashFS.
+
+The original flash layout is quite similar to other ubiquity devices like the
+https://openwrt.org/inbox/ubiquiti/ubiquiti_nanostation_ac.
+
 === Finding the Original mac Address
 
 .Unchanged ifconfig
