@@ -1187,14 +1187,55 @@ bin/qca953x-u-boot.bin
 Looks like there is an extra binary for updating the boot loader. Let's ignore
 it.
 
+There is something Interesting at the end of the file:
+
+.dump of the end of original firmware
+----
+006c6dd0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+006c6de0: 0000 0000 0000 0000 0000 0000 0000 0000  ................
+006c6df0: 0000 4f94 4569 0000 0000 454e 4453 6fd6  ..O.Ei....ENDSo.
+006c6e00: f182 4ef7 e0d0 0cf7 0eaf aefb 91f6 09fa  ..N.............
+006c6e10: 2672 8351 7166 b3b5 acf5 6edf abdd 8495  &r.Qqf....n.....
+006c6e20: 799c 389e 518f f8a2 8801 1c4c d57c 3c39  y.8.Q......L.|<9
+006c6e30: 6b6a ab5b db0f 5b1e bb04 76cf 7490 f57a  kj.[..[...v.t..z
+006c6e40: 892a 0f67 6229 7223 1c3f 981e 70a0 2d13  .*.gb)r#.?..p.-.
+006c6e50: a54a 3868 1d65 1cbf 3815 2e20 19d2 017c  .J8h.e..8.. ...|
+006c6e60: 31b7 f2ee 7797 3172 2b61 6f18 ede3 ecf2  1...w.1r+ao.....
+006c6e70: 8caa 6d50 c1b4 ba8c 5775 7291 7a87 d3fb  ..mP....Wur.z...
+006c6e80: d368 46af 503a 2124 8ce4 ad31 570a 4ca0  .hF.P:!$...1W.L.
+006c6e90: 3d75 dddc ac3c 9033 14a4 27c3 fd42 d321  =u...<.3..'..B.!
+006c6ea0: ef94 2997 02d0 f7aa 5a88 5daf dc5a 2b52  ..).....Z.]..Z+R
+006c6eb0: 1712 1d7e 4fe1 79c8 649c 3e22 2087 5a5d  ...~O.y.d.>" .Z]
+006c6ec0: 71ff efbf 9431 02cf 8824 8c68 b4e3 db85  q....1...$.h....
+006c6ed0: de12 365a 7f24 6722 5e7e 4995 2c9a 3c73  ..6Z.$g"^~I.,.<s
+006c6ee0: 93f8 16c0 9ae7 5e3a 94a0 2670 a0d7 b037  ......^:..&p...7
+006c6ef0: 633d 7e90 63ed ce91 4c8c 6dca 0c18 0000  c=~.c...L.m.....
+006c6f00: 0000                                     ..
+----
+
+There is an `ENDS` header. According to binwalk that could be a signed Ubiquiti
+end header. Let's hope that unsingned header works too.
+
 ==== Puzzle out the data block format
 
-The collected information till now suggest the following header / data format.
+The collected information till now suggest the following data block format:
 
-.Header format as C structure
+- 4 Byte Header type (`UBNT`, `PART`, `EXEC`, `ENDS`; from binwalk: `GEOS`,
+  `OPEN`, `END.`)
+- Header specific format.
+- 4 Byte CRC32
+- 4 Byte padding (all zero)
+
+The CRC32 is calculate from the Header type till the end of the block. For
+blocks with a size that isn't dividable by 4 some padding is most likely
+necessary. To create a custom image, currently I suggest to pad the content with
+0xFF.
+
+FIXME: Find out how to calc checksums for odd sizes.
+
+.Header format for `PART` as C structure
 ----
 struct part_hdr {
-	uint8_t zero[4];
 	uint8_t type[4]; /* "PART" for the partitions. Some other seem possible. */
 	uint8_t part_name[28]; /* For "PART": Name of the partition. */
 	uint8_t unknown1[4];
@@ -1206,10 +1247,7 @@ struct part_hdr {
 }
 ----
 
-After the header follow the raw data with a size of content_size followed by a
-four byte something (most likely some checksum).
-
-Some fields remain unknown:
+Some fields of the `PART` header remain unknown:
 
 |===
 | header number | part_name | unknown1    | unknown2
@@ -1218,7 +1256,8 @@ Some fields remain unknown:
 | 2             | rootfs    | 00 00 00 00 | 00 00 00 00
 |===
 
-Hopefully they are not necessary. That leaves the checksum: Let's hope Ubiquiti
-used the same checksum algorithm like for the first block.
+Hopefully they are not necessary to build a custom image.
 
-
+Interesting part is the END block. According to a question at StackExchange, the
+END without a signature consists of `END.`, a CRC over all parts and a 4 Byte
+padding: https://reverseengineering.stackexchange.com/a/12758
