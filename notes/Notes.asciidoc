@@ -891,5 +891,334 @@ DRAM:  64 MB
 ----
 
 So it seems that there is at least some basic check and after that there is an
-RSA check. Most likely it's not simple to create an image that can be flashed
-that way due to the RSA check.
+RSA check. If the RSA check isn't mandatory, it might could be possible to
+re-create an image.
+
+=== Image Format Analysis
+
+This Analysis tries to find out the image format. The original image used here
+is the ACB.ar934x.v2.4.0.cb22320.180904.1044.bin with the SHA256 checksum of
+72a0cad06d2c9ca9459ff44c9ae322a5955cfdadc5d7297f7545aa52134e4da3.
+
+.binwalk output for the original image
+[listing]
+....
+…iquity_Aircube_Openwrt/orginal 10:17 > binwalk ACB.ar934x.v2.4.0.cb22320.180904.1044.bin
+
+DECIMAL       HEXADECIMAL     DESCRIPTION
+--------------------------------------------------------------------------------
+0             0x0             Ubiquiti firmware header, header size: 264 bytes, ~CRC32: 0xE1185B2F, version: "ACB.ar934x.v2.4.0.cb22320.180904.1044"
+260           0x104           Ubiquiti partition header, header size: 56 bytes, name: "PARTu-boot", base address: 0x00000000, data size: 0 bytes
+126916        0x1EFC4         Certificate in DER format (x509 v3), header length: 4, sequence length: 64
+142164        0x22B54         U-Boot version string, "U-Boot 1.1.4-s1042 (May 26 2017 - 18:32:46)"
+142452        0x22C74         CRC32 polynomial table, big endian
+219680        0x35A20         CRC32 polynomial table, big endian
+221916        0x362DC         Ubiquiti end header, header size: 12 bytes, cumulative ~CRC32: 0x454E442E
+226336        0x37420         Ubiquiti partition header, header size: 56 bytes, name: "PARTkernel", base address: 0x00000001, data size: -2147475456 bytes
+226400        0x37460         uImage header, header size: 64 bytes, header CRC: 0xF5AFC58F, created: 2018-09-04 05:28:33, image size: 1280210 bytes, Data Address: 0x80060000, Entry Point: 0x80060000, data CRC: 0x673454B1, OS: Linux, CPU: MIPS, image type: OS Kernel Image, compression type: lzma, image name: "MIPS OpenWrt Linux-4.1.16"
+226464        0x374A0         LZMA compressed data, properties: 0x6D, dictionary size: 8388608 bytes, uncompressed size: 4059868 bytes
+1506674       0x16FD72        Ubiquiti partition header, header size: 56 bytes, name: "PARTrootfs", base address: 0x00000002, data size: 0 bytes
+1506738       0x16FDB2        Squashfs filesystem, little endian, version 4.0, compression:xz, size: 5203098 bytes, 1684 inodes, blocksize: 262144 bytes, created: 2018-09-04 07:28:33
+6880754       0x68FDF2        POSIX tar archive (GNU)
+
+…iquity_Aircube_Openwrt/orginal 10:17 >
+....
+
+This gives quite some information about the image format. First there is a
+`Ubiquiti firmware header` with a size of 264 bytes which contains some
+information about the whole image. After that there are a number of `Ubiquiti
+partition header` blocks with a size of 56 bytes each. It seems that they can
+but don't have to be ended by an `Ubiquiti end header`.
+
+==== Ubiquiti firmware header @0x0
+
+----
+…iquity_Aircube_Openwrt/orginal 10:39 > xxd -g1 -l264 ACB.ar934x.v2.4.0.cb22320.180904.1044.bin
+00000000: 55 42 4e 54 41 43 42 2e 61 72 39 33 34 78 2e 76  UBNTACB.ar934x.v
+00000010: 32 2e 34 2e 30 2e 63 62 32 32 33 32 30 2e 31 38  2.4.0.cb22320.18
+00000020: 30 39 30 34 2e 31 30 34 34 00 63 62 32 32 33 32  0904.1044.cb2232
+00000030: 30 64 34 32 66 64 66 64 31 63 38 35 34 31 34 36  0d42fdfd1c854146
+00000040: 64 35 30 64 37 39 61 31 32 37 34 32 62 62 35 66  d50d79a12742bb5f
+00000050: 63 35 4d 00 00 00 00 00 00 00 00 00 00 00 00 00  c5M.............
+00000060: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+00000070: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+00000080: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+00000090: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+000000a0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+000000b0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+000000c0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+000000d0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+000000e0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+000000f0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+00000100: 00 00 00 00 e1 18 5b 2f                          ......[/
+…iquity_Aircube_Openwrt/orginal 10:39 >
+----
+
+`binwalk` can decode at least part of the header so it seems that it's a known
+format. Let's have a look at the sources:
+
+https://github.com/ReFirmLabs/binwalk/tree/0c2412c474fa7
+
+In `src/binwalk/magic/firmware` there is a paragraph describing the format:
+
+----
+# Ubiquiti firmware signatures
+0       string      UBNT        Ubiquiti firmware header, header size: 264 bytes,
+>0x108  belong      !0          {invalid},
+>0x104  ubelong     x           ~CRC32: 0x%X,
+>4      byte        0           {invalid},
+>4      string      x           version: "%s"
+
+0       string      GEOS        Ubiquiti firmware header, header size: 264 bytes,
+>0x108  belong      !0          {invalid},
+>0x104  ubelong     x           ~CRC32: 0x%X,
+>4      byte        0           {invalid},
+>4      string      x           version: "%s"
+
+0       string      OPEN        Ubiquiti firmware header, third party,
+>0x108  belong      !0          {invalid},
+>0x104  ubelong     x           ~CRC32: 0x%X,
+>4      byte        0           {invalid},
+>4      string      x           version: "%s"
+----
+
+So everything starting with the string `UBNT` is a valid firmware header. It
+seems that there is also a `OPEN` reserved for third party firmware. After that
+some string follows. That's the `ACB.ar934x.v2.4.0.cb22320.180904.1044` part.
+The next part (`.cb22320d42fdfd1c854146d50d79a12742bb5fc5M`) isn't described.
+But it looks like a git hash with an added M at the end. So most likely that's
+part of the version. The following zeros most likely are just reserve for longer
+strings followed by a four byte CRC32. The CRC32 is calculated over the complete
+header:
+
+----
+…iquity_Aircube_Openwrt/orginal 10:51 > pycrc --check-hexstring "55424e544143422e6172393334782e76322e342e302e636232323332302e3138303930342e3130343400636232323332306434326664666431633835343134366435306437396131323734326262356663354d000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000000" --model crc-32
+0xe1185b2f
+…iquity_Aircube_Openwrt/orginal 10:52 >
+----
+
+==== Ubiquiti partition headers and end header @0x104, @0x362DC, @0x37420 and @0x16FD72
+
+There are three partition headers and one end header detected in that file. It
+seems that binwalk isn't that good in deciphering them. The printed data sizes
+are not really plausible and most likely two end headers are missing.
+
+.partition header detection in binwalk
+----
+-4  string      \x00\x00\x00\x00PART    Ubiquiti partition header,
+>0  byte        x                       header size: 56 bytes,
+>0  byte        0                       {invalid}
+>0  string      x                       name: "%s",
+>40 ubelong     x                       base address: 0x%.8X,
+>48 belong      x                       data size: %d bytes{size:%d}
+
+-4  string      \x00\x00\x00\x00END\x2e Ubiquiti end header, header size: 12 bytes,
+>8  belong      !0                      {invalid},
+>4  ubelong     x                       cumulative ~CRC32: 0x%.8X
+
+-4   string      \x00\x00\x00\x00ENDS   Signed Ubiquiti end header, RSA 2048 bit, header size: 264 bytes
+>260 ubelong     !0                     {invalid}
+----
+
+So a partiton header starts with four zeros and the string `PART`. Let's try to
+decypher the partition header and end header by having a look at them:
+
+.header @0x104 (with some before and after)
+----
+…iquity_Aircube_Openwrt/orginal 11:06 > xxd -s 0x100 -g 1 -l128 ACB.ar934x.v2.4.0.cb22320.180904.1044.bin
+00000100: 00 00 00 00 e1 18 5b 2f 00 00 00 00 50 41 52 54  ......[/....PART
+00000110: 75 2d 62 6f 6f 74 00 00 00 00 00 00 00 00 00 00  u-boot..........
+00000120: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+00000130: 00 00 00 00 9f 00 00 00 00 00 00 00 00 03 72 dc  ..............r.
+00000140: 00 04 00 00 10 00 00 ff 00 00 00 00 10 00 00 fd  ................
+00000150: 00 00 00 00 10 00 02 19 00 00 00 00 10 00 02 17  ................
+00000160: 00 00 00 00 10 00 02 15 00 00 00 00 10 00 02 13  ................
+00000170: 00 00 00 00 10 00 02 11 00 00 00 00 10 00 02 0f  ................
+…iquity_Aircube_Openwrt/orginal 11:06 >
+----
+
+Together with the information from binwalk, that header is quite clear: Starting
+at 0x108 (not 0x104 like binwalk thinks) there is the magic string
+`\x00\x00\x00\x00PART`. After that a partition name (matching the mtd partition
+names) follows. In this case it's `u-boot` followed by a lot of space filled
+with zeros. Finally starting at an offset of 0x2c (address 0x134), there seems
+to be something else: `9f 00 00 00 00 00 00 00 00 03 72 dc 00 04 00 00` followed
+by the first bytes that I found in my flash dump of the original system.
+
+The first four bytes are most likely the start address (flash starts to be
+addressed at 0x9f000000 on this system; `u-boot` partition is at offset 0). The
+last four bytes seem to be the maximum partition size (0x00040000). That leaves
+the middle part of `00 00 00 00 00 03 72 dc`. The last four digits could be a
+offset from the start of the content to the next header: 0x144 + 0x000372dc =
+0x37420. In other words: The size of the content.
+
+Forward to the next header detected by binwalk: The end header at 0x362dc:
+
+.header @0x362DC
+----
+000362b0: 25 73 27 21 20 28 25 64 29 0a 00 00 0a 46 69 72  %s'! (%d)....Fir
+000362c0: 6d 77 61 72 65 20 75 70 64 61 74 65 20 63 6f 6d  mware update com
+000362d0: 70 6c 65 74 65 2e 0a 00 2c 00 00 00 50 41 52 54  plete...,...PART
+000362e0: 00 00 00 00 45 4e 44 2e 00 00 00 00 55 42 4e 54  ....END.....UBNT
+000362f0: 00 00 00 00 47 45 4f 53 00 00 00 00 4f 50 45 4e  ....GEOS....OPEN
+00036300: 00 00 00 00 61 72 39 33 34 00 00 00 46 69 72 6d  ....ar934...Firm
+00036310: 77 61 72 65 20 56 65 72 73 69 6f 6e 3a 20 25 73  ware Version: %s
+00036320: 0a 00 00 00 45 4e 44 53 00 00 00 00 20 52 53 41  ....ENDS.... RSA
+00036330: 20 53 69 67 6e 65 64 20 49 6d 61 67 65 2e 20 56   Signed Image. V
+00036340: 65 72 69 66 79 69 6e 67 20 70 6c 65 61 73 65 20  erifying please 
+----
+
+That is in the middle of some other strings. So most likely it's the text
+segment of the U-Boot contained in the update and can be ignored. Let's continue
+with the next real header:
+
+.header @0x37420
+----
+…iquity_Aircube_Openwrt/orginal 11:36 > xxd -s 0x373e0 -g 1 -l0x100 ACB.ar934x.v2.4.0.cb22320.180904.1044.bin
+000373e0: 80 20 75 7c 80 20 0f 04 80 22 ca 30 80 20 0a 84  . u|. ...".0. ..
+000373f0: 80 20 54 38 80 22 cd b0 80 20 09 70 80 20 40 80  . T8."... .p. @.
+00037400: 80 22 cb 50 80 22 cd c0 80 20 34 44 80 20 09 00  .".P."... 4D. ..
+00037410: 80 20 4a 90 80 20 a3 9c 80 20 77 8c 80 20 a3 38  . J.. ... w.. .8
+00037420: 2f 63 41 74 00 00 00 00 50 41 52 54 6b 65 72 6e  /cAt....PARTkern
+00037430: 65 6c 00 00 00 00 00 00 00 00 00 00 00 00 00 00  el..............
+00037440: 00 00 00 00 00 00 00 00 80 00 20 00 00 00 00 01  .......... .....
+00037450: 9f 05 00 00 80 00 20 00 00 13 89 12 00 40 00 00  ...... ......@..
+00037460: 27 05 19 56 f5 af c5 8f 5b 8e 18 01 00 13 88 d2  '..V....[.......
+00037470: 80 06 00 00 80 06 00 00 67 34 54 b1 05 05 02 03  ........g4T.....
+00037480: 4d 49 50 53 20 4f 70 65 6e 57 72 74 20 4c 69 6e  MIPS OpenWrt Lin
+00037490: 75 78 2d 34 2e 31 2e 31 36 00 00 00 00 00 00 00  ux-4.1.16.......
+000374a0: 6d 00 00 80 00 dc f2 3d 00 00 00 00 00 00 00 6f  m......=.......o
+000374b0: fd ff ff a3 b7 7f 4c 34 f7 f8 1f 01 7a 6e db 3c  ......L4....zn.<
+000374c0: ec 7d 4e a1 71 42 07 53 5c c0 60 27 e1 7d 34 4d  .}N.qB.S\.`'.}4M
+000374d0: 9c eb 47 fe 81 53 55 c3 ab c6 3e 77 88 07 19 20  ..G..SU...>w... 
+…iquity_Aircube_Openwrt/orginal 11:37 >
+----
+
+Right before the header starts with the same format like before, there is a
+0x2f634174 that doesn't look like the pattern right before it. Maybe a checksum?
+Let's check together with the other headers later.
+
+This time it's partition `kernel`. Unlike before there is already some content
+at offset 0x24 (address 0x37448): `80 00 20 00 00 00 00 01`. After that the
+already known start address of the partition and the bytes in the already
+analyzed order follows.
+
+Let's have a look at the last header:
+
+.header @0x16FD72
+----
+…iquity_Aircube_Openwrt/orginal 12:03 > xxd -s 0x16FD00 -g 1 -l0x100 ACB.ar934x.v2.4.0.cb22320.180904.1044.bin
+0016fd00: 6c dc 60 3f d7 f3 f2 c5 38 fa f6 50 db d8 7a 8e  l.`?....8..P..z.
+0016fd10: c8 07 18 c3 f0 2e 95 79 ab 03 b0 65 c4 fc ff a7  .......y...e....
+0016fd20: 1d 7a c4 19 fe 7f 5c 04 1f a3 96 d9 61 b5 80 27  .z....\.....a..'
+0016fd30: d5 96 87 b3 9c 95 03 94 9c ec 0c ca 2b 76 d7 61  ............+v.a
+0016fd40: 70 35 c2 49 bf ee 90 b1 a2 b7 f8 e3 2b c3 cb a2  p5.I........+...
+0016fd50: 3a 15 d7 db fb 25 c9 6e 06 66 a0 07 3d 1c b4 f6  :....%.n.f..=...
+0016fd60: 5d a8 46 aa f6 6d 7f f3 c9 fe 66 c9 28 bd cd 47  ].F..m....f.(..G
+0016fd70: 10 1a d1 a2 72 ff 00 00 00 00 50 41 52 54 72 6f  ....r.....PARTro
+0016fd80: 6f 74 66 73 00 00 00 00 00 00 00 00 00 00 00 00  otfs............
+0016fd90: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0016fda0: 00 02 9f 45 00 00 00 00 00 00 00 52 00 00 00 b6  ...E.......R....
+0016fdb0: 00 00 68 73 71 73 94 06 00 00 21 34 8e 5b 00 00  ..hsqs....!4.[..
+0016fdc0: 04 00 21 00 00 00 04 00 12 00 c0 06 01 00 04 00  ..!.............
+0016fdd0: 00 00 7f 06 fa 32 00 00 00 00 9a 64 4f 00 00 00  .....2.....dO...
+0016fde0: 00 00 92 64 4f 00 00 00 00 00 ff ff ff ff ff ff  ...dO...........
+0016fdf0: ff ff ce da 4e 00 00 00 00 00 ca 0f 4f 00 00 00  ....N.......O...
+…iquity_Aircube_Openwrt/orginal 12:08 >
+----
+
+Here the bytes right after the name are `00 00 00 00 00 00 00 02`. That gives
+another hint regarding one word: The last four bytes seem to be a counter.
+
+If the size is added again, to the last header, the next something would be at
+0x68fdb2. binwalk detected nothing at this address. Let's have a look:
+
+.something @0x68fdb2
+----
+…iquity_Aircube_Openwrt/orginal 12:21 > xxd -s 0x68fd00 -g 1 -l0x200 ACB.ar934x.v2.4.0.cb22320.180904.1044.bin
+0068fd00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fd10: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fd20: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fd30: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fd40: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fd50: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fd60: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fd70: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fd80: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fd90: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fda0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fdb0: 00 00 50 10 09 47 00 00 00 00 45 58 45 43 65 78  ..P..G....EXECex
+0068fdc0: 74 72 61 73 00 00 00 00 00 00 00 00 00 00 00 00  tras............
+0068fdd0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fde0: 00 00 00 00 00 00 00 00 00 00 00 03 70 00 00 03  ............p...
+0068fdf0: 70 00 62 69 6e 2f 00 00 00 00 00 00 00 00 00 00  p.bin/..........
+0068fe00: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fe10: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fe20: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fe30: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fe40: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fe50: 00 00 00 00 00 00 30 30 30 30 37 35 35 00 30 30  ......0000755.00
+0068fe60: 30 32 37 33 34 00 30 30 30 32 37 33 34 00 30 30  02734.0002734.00
+0068fe70: 30 30 30 30 30 30 30 30 30 00 31 33 33 34 33 34  000000000.133434
+0068fe80: 33 33 37 32 32 00 30 31 31 35 32 34 00 20 35 00  33722.011524. 5.
+0068fe90: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fea0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068feb0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fec0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fed0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fee0: 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00 00  ................
+0068fef0: 00 00 00 75 73 74 61 72 20 20 00 6a 65 6e 6b 69  ...ustar  .jenki
+…iquity_Aircube_Openwrt/orginal 12:21 >
+----
+
+There definitively is something there. The header format starts similar. Instead
+of the `PARTxxx`, there is a `EXECextras`. So maybe some executable to do
+something. `binwalk` detects a tar archive right at the end of the header at
+address 0x68fdf2. Let's have a look:
+
+----
+> dd if=ACB.ar934x.v2.4.0.cb22320.180904.1044.bin of=0x68fdf2_to_end.tar bs=1 skip=6880754
+> tar tf 0x68fdf2_to_end.tar
+bin/
+bin/qca953x-u-boot.bin
+>
+----
+
+Looks like there is an extra binary for updating the boot loader. Let's ignore
+it.
+
+==== Puzzle out the data block format
+
+The collected information till now suggest the following header / data format.
+
+.Header format as C structure
+----
+struct part_hdr {
+	uint8_t zero[4];
+	uint8_t type[4]; /* "PART" for the partitions. Some other seem possible. */
+	uint8_t part_name[28]; /* For "PART": Name of the partition. */
+	uint8_t unknown1[4];
+	uint8_t header_number[4];
+	uint8_t start_address[4];
+	uint8_t unknown2[4];
+	uint8_t content_size[4];
+	uint8_t max_size[4];
+}
+----
+
+After the header follow the raw data with a size of content_size followed by a
+four byte something (most likely some checksum).
+
+Some fields remain unknown:
+
+|===
+| header number | part_name | unknown1    | unknown2
+| 0             | u-boot    | 00 00 00 00 | 00 00 00 00
+| 1             | kernel    | 80 00 20 00 | 80 00 20 00
+| 2             | rootfs    | 00 00 00 00 | 00 00 00 00
+|===
+
+Hopefully they are not necessary. That leaves the checksum: Let's hope Ubiquiti
+used the same checksum algorithm like for the first block.
+
+
