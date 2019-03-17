@@ -8,7 +8,7 @@
 | **Instruction set:**                   | MIPS
 | **Vendor:**                            | Qualcomm Atheros
 | **Bootloader:**                        | U-Boot
-| **System-On-Chip:**                    | Qualcomm / Atheros QCA9533-BL3A
+| **System-On-Chip:**                    | Qualcomm / Atheros QCA9533-BL3A (MIPS 24Kc)
 | **CPU Frq**                            | 650MHz
 | **Flash size:**                        | 16 MiB
 | **Flash Chip:**                        | Macronix MX25L12835FMT
@@ -276,7 +276,27 @@ BusyBox v1.24.1 () built-in shell (ash)
     Dirty Diamond v2.4.0        cb22320.180904.1044
 ubnt@airCube-ISP:/# uname -a
 Linux airCube-ISP 4.1.16 #1 Tue Sep 4 10:44:06 EEST 2018 mips GNU/Linux
-ubnt@airCube-ISP:/# 
+ubnt@airCube-ISP:~# cat /proc/cpuinfo 
+system type             : Qualcomm Atheros QCA9533 ver 2 rev 0
+machine                 : Ubiquiti airCube
+processor               : 0
+cpu model               : MIPS 24Kc V7.4
+BogoMIPS                : 432.53
+wait instruction        : yes
+microsecond timers      : yes
+tlb_entries             : 16
+extra interrupt vector  : yes
+hardware watchpoint     : yes, count: 4, address/irw mask: [0x0ffc, 0x0ffc, 0x0ffb, 0x0ffb]
+isa                     : mips1 mips2 mips32r1 mips32r2
+ASEs implemented        : mips16
+shadow register sets    : 1
+kscratch registers      : 0
+package                 : 0
+core                    : 0
+VCED exceptions         : not available
+VCEI exceptions         : not available
+
+ubnt@airCube-ISP:~# 
 ----
 
 You can login with the user `ubnt` and the password printed on the label on the
@@ -1261,3 +1281,120 @@ Hopefully they are not necessary to build a custom image.
 Interesting part is the END block. According to a question at StackExchange, the
 END without a signature consists of `END.`, a CRC over all parts and a 4 Byte
 padding: https://reverseengineering.stackexchange.com/a/12758
+
+=== Further analysis
+
+Sadly the first attempt at creating an image didn't work. So a more thorough
+analysis of the check algorithm is necessary.
+
+Although Ubiquiti proudly claims that all sources are in the GPL archive, there
+is no download link to it. I asked the support for the archive for the airCube
+in January 2018 and received the following answer: "GPL Source code for airCube
+is not available for now and we do not have any ETA when it will be available."
+
+Three months later, the GPL archive is still not downloadable. So the binary has
+to be enough ...
+
+It's quite unclear which parts of the system are GPL and which are not. It's
+quite possible that Ubiquiti wrote their own program for checking the image that
+isn't linked against any GPL code. Analyzing that could be a violation of the
+EULA. So let's ignore the web interface upgrade.
+
+Luckily U-Boot is quite clearly GPL and the code that checks the image there has
+to be linked into the one U-Boot binary. So it can't violate any copyrights to
+analyze the U-Boot. GPL clearly allows analysis.
+
+To be entirely sure that there is no license violation, I'll extract the U-Boot
+that I took from the flash dump. I don't have to accept any EULA for opening the
+device and attaching to the serial console. But I can dump the flash that way.
+So there shouldn't be any problems there.
+
+U-Boot is in the first partition starting at flash offset 0x0. The size of that
+partition is 0x40000 (256k):
+
+----
+> dd if=orgflash.bin of=orgflash.u-boot.bin bs=1k count=256
+----
+
+The result is a binary. To analyze it further, some knowledge about the
+processor and structure is necessary.
+
+==== Architecture, Endianess and Code Entry point
+
+First things first: The processor is a MIPS. According to
+https://wikidevi.com/wiki/Qualcomm_Atheros it's a MIPS 24Kc. There is also a
+note there that it "appears to be identical to the QCA9531"
+
+I would expect that the binary begins with a vector table:
+
+----
+> xxd -g4 orgflash.u-boot.bin
+00000000: 100000ff 00000000 100000fd 00000000  ................
+00000010: 10000175 00000000 10000173 00000000  ...u.......s....
+00000020: 10000171 00000000 1000016f 00000000  ...q.......o....
+00000030: 1000016d 00000000 1000016b 00000000  ...m.......k....
+00000040: 10000169 00000000 10000167 00000000  ...i.......g....
+00000050: 10000165 00000000 10000163 00000000  ...e.......c....
+00000060: 10000161 00000000 1000015f 00000000  ...a......._....
+00000070: 1000015d 00000000 1000015b 00000000  ...].......[....
+00000080: 10000159 00000000 10000157 00000000  ...Y.......W....
+00000090: 10000155 00000000 10000153 00000000  ...U.......S....
+000000a0: 10000151 00000000 1000014f 00000000  ...Q.......O....
+000000b0: 1000014d 00000000 1000014b 00000000  ...M.......K....
+000000c0: 10000149 00000000 10000147 00000000  ...I.......G....
+000000d0: 10000145 00000000 10000143 00000000  ...E.......C....
+000000e0: 10000141 00000000 1000013f 00000000  ...A.......?....
+000000f0: 1000013d 00000000 1000013b 00000000  ...=.......;....
+00000100: 10000139 00000000 10000137 00000000  ...9.......7....
+00000110: 10000135 00000000 10000133 00000000  ...5.......3....
+00000120: 10000131 00000000 1000012f 00000000  ...1......./....
+00000130: 1000012d 00000000 1000012b 00000000  ...-.......+....
+----
+
+Looks quite like a table. MIPS can use big or little endian format. The table
+most likely contains jump instructions.
+
+MIPS instructions always start with a 6 bit opcode. Depending on the type of the
+opcode, different fields can follow. Take a look at
+https://github.com/MIPT-ILab/mipt-mips/wiki/MIPS-Instruction-Set (or some other
+reference) for details.
+
+U-Boot drivers are (mostly) polled. So most vectors should point to some default
+routine. The dump of the vector table above shows a lot of numbers counting
+down (except for the first two vectors). So most likely the instruction is some
+kind of relative jump followed by an address. That gives a hint about the
+endianness: The instruction (highest bits) are at the lowest address. So We are
+talking *big-endian* here.
+
+The instruction is a 0b000100 which is a branch on equal (`beq`). `beq` is
+followed by 5 bit source (`s`), 5 bit target (`t`) and a 16 bit immediate value
+(`C`). It does the following:
+
+----
+PC += 4;
+if (s == t)
+    PC += (C << 2)
+----
+
+`s` and `t` are pointing to the same field. So its used more or less
+unconditional here. For the reset vector (the first one) the jump goes to `PC =
+PC + 4 + (0xFF << 2) = <start address> + 0x400`. So the program entry is at
+0x9F000400.
+
+==== Disassembly
+
+With that information gathered, let's try to disassemble the code.
+
+Sadly objdump doesn't like binaries without additional information. So some
+extra parameters are necessary:
+
+----
+> mips-openwrt-linux-objdump -mmips:isa32r2 -b binary -EB --adjust-vma=0x9f000000 -Mreg-names=mips32r2 -D orgflash.u-boot.bin > orgflash.u-boot.bin.disassembly
+----
+
+That of course is still quite hard to read from the beginning. To get to the
+right location, the string printed during a failed check might would be useful:
+`Firmware check failed! (1)`. That is located at address 0x9f027250.
+
+Of course no one loaded that address directly. Most likely some load via a
+pointer before it is passed to the print function.
