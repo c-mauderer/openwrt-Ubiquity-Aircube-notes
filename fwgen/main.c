@@ -40,12 +40,12 @@
 #define END_LEN (3*4)
 #define END_STRING "END."
 
-#define KERNEL_PART_SIZE    0x00040000ul
-#define KERNEL_PART_NAME    "kernel"
 #define KERNEL_PART_ADDRESS 0x9f050000ul
-#define ROOTFS_PART_SIZE    0x00b60000ul
+#define KERNEL_PART_SIZE    0x00400000ul
+#define KERNEL_PART_NAME    "kernel"
+#define ROOTFS_PART_ADDRESS 0x9f450000ul
+#define ROOTFS_PART_SIZE    0x0b600000ul
 #define ROOTFS_PART_NAME    "rootfs"
-#define ROOTFS_PART_ADDRESS 0x9f045000ul
 
 struct part_hdr {
 	char type[4]; /* "PART" for the partitions. */
@@ -84,13 +84,13 @@ static void format_int32(char *target, int32_t val)
 
 static void write_header(int fdout, crc_t *crc)
 {
-	char header[HEADER_LEN] = "OPENWRT.image";
+	char header[HEADER_LEN] = "OPENACB.ar934x";
 	crc_t header_crc;
 
 	header_crc = crc_init();
 	header_crc = crc_update(header_crc, header, HEADER_LEN - CRC_SIZE);
 	header_crc = crc_finalize(header_crc);
-	format_int32(&header[HEADER_LEN - CRC_SIZE], header_crc);
+	format_int32(&header[HEADER_LEN - CRC_SIZE - PADDING_SIZE], header_crc);
 
 	*crc = crc_update(*crc, header, HEADER_LEN);
 	write(fdout, header, HEADER_LEN);
@@ -213,7 +213,7 @@ int main(int argc, char *argv[])
 	if (outfile == NULL) {
 		fdout = STDOUT_FILENO;
 	} else {
-		fdout = open(outfile, O_WRONLY | O_CREAT);
+		fdout = open(outfile, O_WRONLY | O_CREAT, S_IRUSR | S_IWUSR | S_IRGRP | S_IROTH);
 		if (fdout == -1) {
 			err(1, "Error opening output file \"%s\"", outfile);
 		}
@@ -226,6 +226,9 @@ int main(int argc, char *argv[])
 	if (!done) {
 		done = write_partition(fdout, &crc, fdin,
 		    ROOTFS_PART_ADDRESS, ROOTFS_PART_SIZE, ROOTFS_PART_NAME, 1);
+		if (!done) {
+			errx(1, "Input too big.");
+		}
 	}
 	write_end(fdout, &crc);
 
