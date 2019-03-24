@@ -34,7 +34,7 @@
 
 #include "crc32.h"
 
-#define HEADER_LEN 264 /* includes padding and CRC */
+#define HEADER_LEN 268 /* includes padding and CRC */
 #define CRC_SIZE 4
 #define PADDING_SIZE 4
 #define END_LEN (3*4)
@@ -58,7 +58,7 @@ struct part_hdr {
 	char max_size[4];
 };
 
-static void printhelp(void)
+static void printhelp(char *hdr)
 {
 	fprintf(stderr,
 	    "Inofficial Ubiquiti airCube image generator.\n"
@@ -66,6 +66,11 @@ static void printhelp(void)
 	    "  -h        Print this help.\n"
 	    "  -i <in>   Use <in> as input file.\n"
 	    "  -o <out>  Use <out> as output file.\n"
+	    "  -a <hdr1> Use the given string as first header string.\n"
+	    "            Default: \"%s\"\n"
+	    "  -b <hdr2> Use the given string as second header string.\n"
+	    "            Default: None\n",
+	    hdr
 	    );
 }
 
@@ -82,13 +87,22 @@ static void format_int32(char *target, int32_t val)
 	format_uint32(target, (uint32_t) val);
 }
 
-static void write_header(int fdout, crc_t *crc)
+static void write_header(int fdout, crc_t *crc, char *hdr1, char *hdr2)
 {
-	char header[HEADER_LEN] = "OPENACB.ar934x";
+	char header[HEADER_LEN] = "";
 	crc_t header_crc;
+	size_t len;
+
+	strncpy(header, hdr1, HEADER_LEN - CRC_SIZE - PADDING_SIZE - 1);
+	len = strnlen(header, HEADER_LEN);
+	if (hdr2) {
+		strncpy(header + len + 1, hdr2,
+		    HEADER_LEN - len - CRC_SIZE - PADDING_SIZE - 2);
+	}
 
 	header_crc = crc_init();
-	header_crc = crc_update(header_crc, header, HEADER_LEN - CRC_SIZE);
+	header_crc = crc_update(header_crc, header,
+	    HEADER_LEN - CRC_SIZE - PADDING_SIZE);
 	header_crc = crc_finalize(header_crc);
 	format_int32(&header[HEADER_LEN - CRC_SIZE - PADDING_SIZE], header_crc);
 
@@ -179,12 +193,20 @@ int main(int argc, char *argv[])
 	int fdout;
 	crc_t crc;
 	bool done;
+	char *hdr1 = "OPENACB.ar934x";
+	char *hdr2 = NULL;
 
-	while ((c = getopt (argc, argv, "hi:o:")) != -1)
+	while ((c = getopt (argc, argv, "a:b:hi:o:")) != -1)
 	switch (c)
 	{
+	case 'a':
+		hdr1 = strdup(optarg);
+		break;
+	case 'b':
+		hdr2 = strdup(optarg);
+		break;
 	case 'h':
-		printhelp();
+		printhelp(hdr1);
 		exit(0);
 		break;
 	case 'i':
@@ -220,7 +242,7 @@ int main(int argc, char *argv[])
 	}
 
 	crc = crc_init();
-	write_header(fdout, &crc);
+	write_header(fdout, &crc, hdr1, hdr2);
 	done = write_partition(fdout, &crc, fdin,
 	    KERNEL_PART_ADDRESS, KERNEL_PART_SIZE, KERNEL_PART_NAME, 0);
 	if (!done) {
