@@ -1,6 +1,6 @@
 = Ubiquiti airCube ISP
 
-:toc
+:toc:
 
 == Hardware
 
