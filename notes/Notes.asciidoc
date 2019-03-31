@@ -1,5 +1,7 @@
 = Ubiquiti airCube ISP
 
+:toc
+
 == Hardware
 
 === Info
@@ -1416,3 +1418,59 @@ So it seems that it doesn't accept unsigned firmware images.
 // 
 // Of course no one loaded that address directly. Most likely some load via a
 // pointer before it is passed to the print function.
+
+=== Flashing via U-Boot
+
+With (currently) no other options left lets try to flash via U-Boot.
+
+----
+ath> setenv serverip 192.168.1.100
+ath> help tftpboot
+tftpboot [loadAddress] [bootfilename]
+
+ath> tftpboot 0x81000000 openwrt-ath79-generic-ubnt_acb-isp-squashfs-sysupgrade.bin
+eth0 link down
+enet1 port1 up
+dup 1 speed 1000
+Using eth1 device
+TFTP from server 192.168.1.100; our IP address is 192.168.1.20
+Filename 'openwrt-ath79-generic-ubnt_acb-isp-squashfs-factory.bin'.
+Load address: 0x81000000
+Loading: #################################################################
+         #################################################################
+         #################################################################
+         #################################################################
+         #################################################################
+         #################################################################
+         #######
+done
+Bytes transferred = 2031620 (1f0004 hex)
+ath> erase 0x9f050000 0x9ffaffff
+Erasing flash... 
+First 0x5 last 0xfa sector size 0x10000
+ 250
+Erased 246 sectors
+ath> cp 0x81000000 0x9f050000 ${filesize}
+Copy to Flash... write addr: 9f050000
+done
+ath> reset
+----
+
+After that, the OpenWRT system boots.
+
+== Status
+
+- working:
+  - OpenWRT booting
+  - Basic WLAN function
+  - Switch is set up
+  - Ethernet WAN / LAN
+  - Upgrade via sysupgrade
+  - Reset-Button
+- untested:
+  - PoE
+  - PoE pass through
+  - Doing something more with WLAN than connect one client
+- missing:
+  - LED
+  - factory upgrade via web IF or TFTP recovery
