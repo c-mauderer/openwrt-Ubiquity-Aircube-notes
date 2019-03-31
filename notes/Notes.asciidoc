@@ -1,6 +1,9 @@
 = Ubiquiti airCube ISP
-
 :toc:
+:toc-placement: preamble
+
+// Need some preamble to get TOC:
+{empty}
 
 == Hardware
 
