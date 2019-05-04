@@ -54,7 +54,7 @@ image:pictures/aircube_SONiX_logic_analyzer.jpg[width=600]
 The logic analyzer is hooked up in a way that Pin 1 to 7 are analyzed as channel
 1 to 7.
 
-image:pictures/aircube_SONiX_pinout.png[width=600]
+image:pictures/aircube_SONiX_pinout.jpg[width=600]
 
 Overview over the boot process:
 
@@ -81,6 +81,13 @@ So the pinout is:
 * Pin 5: SPI MISO
 * Pin 6: SPI MOSI
 * Pin 7: SPI SCK
+
+The SPI pins are connected to the following SoC-pins:
+
+* CS: GPIO 1
+* MISO: ?
+* MOSI: GPIO 2
+* SCK: GPIO 3
 
 Known MOSI values on SPI (from various patterns / strings in the uh_leds module):
 
