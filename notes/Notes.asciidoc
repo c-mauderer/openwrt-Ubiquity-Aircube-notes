@@ -114,10 +114,10 @@ Higher two bits set a mode. Lower six bits are a parameter.
 * Mode: 00 -> set brightness between 0x00 (min) and 0x3F (max)
 * Mode: 01 -> pulsing pattern (min -> max -> min) with an interval. From some
   tests, the period is about (50ms + 102ms * parameter). There is a slightly
-  different pattern starting from 0x100 (longer gap between the pulses) but the
-  time still follows that calculation.
+  different pattern starting from <mode> + 0x10 (longer gap between the pulses)
+  but the time still follows that calculation.
 * Mode: 10 -> same as 01 but with only a ramp from min to max. Again a slight
-  jump in the pattern at 0x100.
+  jump in the pattern at <mode> + 0x10.
 * Mode: 11 -> blinking (off -> 25% -> off -> 25% -> ...) with a period of 
   (105ms * parameter)
 
