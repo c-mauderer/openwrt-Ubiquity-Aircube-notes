@@ -1468,6 +1468,58 @@ ath> reset
 
 After that, the OpenWRT system boots.
 
+=== Searching for alternative flashing methods
+
+Flashing via U-Boot is not really a good solution because it is necessary to
+open the case. So some method to work around that is necessary.
+
+Again: This analysis is done on version
+`ACB.ar934x.v2.4.0.cb22320.180904.1044.bin`
+
+==== Inject commands
+
+Some method to inject commands via the web interface is necessary. One
+possibility is the configuration update:
+
+The configuration archive that can be downloaded from the device is quite
+simple: Rename it to something ending on .tar.gz and it can be extracted.
+
+The archive contains the contents of +/tmp/persistent/config/+ which is mounted
+to +/etc/config/+. One vulnerable service there is the uhttpd service with the
+lua module.
+
+*ATTENTION: The following breaks the original web interface.*
+
+In the file +uhttpd+ the following configs can be changed to the given new
+values:
+
+----
+option lua_prefix  '/lua'
+option lua_handler '/tmp/persistent/config/lua_handler.lua'
+----
+
+Now every time +http://192.168.1.1/lua+ is opened the script +lua_handler.lua+
+that can be packed together with the configuration is called.
+
+That script can look like follows:
+
+----
+function handle_request(env)
+    uhttpd.send("Status: 200 OK\r\n")
+    uhttpd.send("Content-Type: text/html\r\n\r\n")
+
+    local command = "echo injected command"
+
+    local proc = assert(io.popen(command))
+    for line in proc:lines() do
+        uhttpd.send(line.."\n")
+    end
+    proc:close()
+end
+----
+
+The +local command+ can be replaced by any shell command.
+
 == Status
 
 - working:
