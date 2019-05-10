@@ -1495,10 +1495,10 @@ values:
 
 ----
 option lua_prefix  '/lua'
-option lua_handler '/tmp/persistent/config/lua_handler.lua'
+option lua_handler '/tmp/persistent/config/upgrade/lua_handler.lua'
 ----
 
-Now every time +http://192.168.1.1/lua+ is opened the script +lua_handler.lua+
+Now every time +http://192.168.1.1/lua+ is opened the script +upgrade/lua_handler.lua+
 that can be packed together with the configuration is called.
 
 That script can look like follows:
@@ -1563,6 +1563,131 @@ bootargs=console=ttyS0,115200 root=31:03 rootfstype=squashfs init=/sbin/init pan
 ipaddr=192.168.1.20
 ubnt@airCube-ISP:/etc#
 ----
+
+Now for a useful new U-Boot bootcmd: This should consist of multiple parts:
+
+1. Show the user that he can do something via LED.
+2. Wait some seconds for the reset button.
+3. If pressed: Do something useful like a net console. Otherwise boot normally.
+
+Relevant GPIO pins for that are (see earlier analysis):
+
+* LED CS: GPIO 1
+* LED MOSI: GPIO 2
+* LED SCK: GPIO 3
+* Reset button: GPIO 17
+
+The LED is connected to some GPIO pins. So the first thing would be to control
+these via some small function. It is necessary to use the raw registers because
+the Ubiquiti didn't add any GPIO functions.
+
+Unfortunately the U-Boot shell is very minimalistic. So the commands have to be
+minimalistic. Let's assume the following:
+
+- Someone already set the LED and therefore the pins are initialized.
+- Someone already read the Reset button and therefore the pin is initialized.
+
+.U-Boot command sequences for setting the LED
+----
+setenv LEDcs0 mw.l 0x18040010 0x00000002
+setenv LEDcs1 mw.l 0x1804000C 0x00000002
+setenv LEDck0 mw.l 0x18040010 0x00000008
+setenv LEDck1 mw.l 0x1804000C 0x00000008
+setenv LEDda0 mw.l 0x18040010 0x00000004
+setenv LEDda1 mw.l 0x1804000C 0x00000004
+setenv LEDb0 'run LEDda0; run LEDck1; run LEDck0'
+setenv LEDb1 'run LEDda1; run LEDck1; run LEDck0'
+setenv LEDsend1 'run LEDb0; run LEDb0; run LEDb0; run LEDb1'
+setenv LEDsend4 'run LEDb0; run LEDb1; run LEDb0; run LEDb0'
+setenv LEDsend5 'run LEDb0; run LEDb1; run LEDb0; run LEDb1'
+setenv LEDsend41 'run LEDcs0; run LEDsend4; run LEDsend2; run LEDcs1'
+setenv LEDsend55 'run LEDcs0; run LEDsend5; run LEDsend5; run LEDcs1'
+run LEDsend41
+----
+
+Setting the LED with this commands work for at least some values. It seems that
+for some reason the uppermost bit can't be one. But it's enough to show some
+states so it's OK.
+
+A bigger problem is the check for the reset button: It seems that Ubiquiti
+decided to build a U-Boot without +if+ or similar. Luckily there is an +cmp+
+command which can be used to execute a command conditionally.
+
+.U-Boot command sequences for reading the reset button
+----
+setenv BTNcopy 'cp.b 0x18040005 0x81000000 1'
+setenv BTNmaybeCmd 'echo do this if not pressed'
+setenv BTNallwaysCmd 'echo always do this'
+setenv BTNcheck 'cmp.b 0x18040005 0x81000000 1'
+run BTNcopy; echo 'press reset now ...'; sleep 3; run BTNcheck BTNmaybeCmd; run BTNallwaysCmd
+----
+
+So with that there is the possibility of indication (LED) and detecting user
+input (reset button). Now only something useful is missing.
+
+It seems that Ubiquiti also decided that a netconsole wouldn't be worth the
+effort. So the commands have to do all of the flashing work if reset is pressed.
+
+==== Putting it together
+
+Putting it all together, the following script should be injected:
+
+----
+#!/bin/sh -x
+
+# prepare environment for fw_setenv
+mkdir -p /tmp/root
+mkdir -p /tmp/overlay
+mkdir -p /tmp/overlay_work
+mount -t squashfs -oro /dev/mtdblock3 /tmp/root
+mount -t overlay -o lowerdir=/tmp/root/etc,upperdir=/tmp/overlay,workdir=/tmp/overlay_work overlay /etc
+echo "/dev/mtd1 0x0 0x10000 0x10000" >> /etc/fw_env.config
+
+# create U-Boot variable file
+cat <<EOF > /tmp/ubootenv_add
+LEDcs0         mw.l 0x18040010 0x00000002
+LEDcs1         mw.l 0x1804000C 0x00000002
+LEDck0         mw.l 0x18040010 0x00000008
+LEDck1         mw.l 0x1804000C 0x00000008
+LEDda0         mw.l 0x18040010 0x00000004
+LEDda1         mw.l 0x1804000C 0x00000004
+LEDb0          run LEDda0; run LEDck1; run LEDck0
+LEDb1          run LEDda1; run LEDck1; run LEDck0
+LEDsend1       run LEDb0; run LEDb0; run LEDb0; run LEDb1
+LEDsend4       run LEDb0; run LEDb1; run LEDb0; run LEDb0
+LEDsend5       run LEDb0; run LEDb1; run LEDb0; run LEDb1
+LEDsend41      run LEDcs0; run LEDsend4; run LEDsend1; run LEDcs1
+LEDsend45      run LEDcs0; run LEDsend4; run LEDsend5; run LEDcs1
+LEDsend55      run LEDcs0; run LEDsend5; run LEDsend5; run LEDcs1
+UPSrvIP        setenv serverip 192.168.1.100
+UPTFTP         tftpboot 0x81000000 openwrt-sysupgrade.bin
+UPerase        erase 0x9f050000 0x9ffaffff
+UPcp           cp 0x81000000 0x9f050000 ${filesize}
+BTNcopy        cp.b 0x18040005 0x81000000 1
+BTNmaybeCmd    run LEDsend55; bootm 0x9f050000
+BTNallwaysCmd  echo 'try to upgrade now'; run LEDsend41 UPSrvIP UPTFTP UPerase UPcp
+BTNcheck       cmp.b 0x18040005 0x81000000 1
+bootcmd        run BTNcopy; echo 'press reset now to go into OpenWRT load mode ...'; run LEDsend45; sleep 3; run BTNcheck BTNmaybeCmd; run BTNallwaysCmd; reset
+EOF
+
+# write that to Uboot environment
+fw_setenv -s /tmp/ubootenv_add
+fw_printenv
+reboot
+----
+
+With that the device will reboot. During the reboot U-Boot will now blink fast
+for three seconds. If nothing happens during the three seconds, the device will
+continue to boot normally. If the reset button is pressed in this time and hold
+till the three seconds are over, an TFTP-re-flash process will be started. This
+process expects a 'openwrt-sysupgrade.bin' on a TFTP server at '192.168.1.100'.
+It takes that image and flashes it.
+
+NOTE: There are no error checks. So if the image is wrong or too big, you might
+brick your device permanently.
+
+*Problem: This still does not work.* `fw_setenv` seems to have problems
+accessing mtd1 if run from the web-if.
 
 == Status
 
