@@ -1520,6 +1520,50 @@ end
 
 The +local command+ can be replaced by any shell command.
 
+==== Change U-Boot environment
+
+Now it should theoretically be possible to change the U-Boot environment using
+the ability to inject commands. Ubiquiti was nice enough to provide the
++uboot-envtools+ package with +fw_printenv+ and +fw_setenv+ commands. But the
+configuration is missing. It is not enough to set the +/etc/config/ubootenv+.
+Normally a +/etc/fw_env.config+ should be generated but for some reason is
+doesn't on that device. So it has to be added manually.
+
+Unluckily +/etc+ is on a squashfs and Ubiquiti didn't add an OverlayFS for it.
+So it's not changeable. But a temporary OverlayFS can be added:
+
+----
+mkdir -p /tmp/root
+mkdir -p /tmp/overlay
+mkdir -p /tmp/overlay_work
+mount -t squashfs -oro /dev/mtdblock3 /tmp/root
+mount -t overlay -o lowerdir=/tmp/root/etc,upperdir=/tmp/overlay,workdir=/tmp/overlay_work overlay /etc
+----
+
+Now the configuration can be created and the environment is readable and
+writeable:
+
+----
+ubnt@airCube-ISP:/etc# echo "/dev/mtd1 0x0 0x10000 0x10000" >> /etc/fw_env.config
+ubnt@airCube-ISP:/etc# fw_printenv 
+bootdelay=1
+baudrate=115200
+ethaddr=0x00:0xaa:0xbb:0xcc:0xdd:0xee
+ubntctrl=enabled
+serverip=192.168.1.254 
+stdin=serial
+stdout=serial
+stderr=serial
+ubntaddr=80200020
+appinitdone=true
+ethact=eth1
+mtdparts=mtdparts=spi0.0:256k(u-boot),64k(u-boot-env),4096k(kernel),11648k(rootfs),256k(cfg),64k(EEPROM)
+bootcmd=bootm 0x9f050000
+bootargs=console=ttyS0,115200 root=31:03 rootfstype=squashfs init=/sbin/init panic=3 board=AIRCUBE
+ipaddr=192.168.1.20
+ubnt@airCube-ISP:/etc#
+----
+
 == Status
 
 - working:
