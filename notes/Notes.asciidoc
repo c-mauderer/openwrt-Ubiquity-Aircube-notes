@@ -1705,6 +1705,208 @@ brick your device permanently.
 *Problem: This still does not work.* `fw_setenv` seems to have problems
 accessing mtd1 if run from the web-if.
 
+=== Searching for alternative flashing methods Part 2
+
+After a long time I decided to continue my Odysee.
+
+The OpenWRT forum user Snap has found out that the `ubntbox` binary can be
+patched. See the following link for his explanation:
+
+https://forum.openwrt.org/t/add-openwrt-support-for-ubiquity-aircube-isp-ubnt-acb-isp/32999/22
+
+Basically for a 2.5.0 firmware the byte 0x6016 (=24598) of `ubntbox` has to be
+changed to 0x10. So first step: Updating the system to 2.5.0.
+
+With this information the following approach can be tried:
+
+* Inject a script like already described above.
+* Mount an overlay file system.
+* Patch `ubntbox` and maybe some further files so an unsigned firmware is
+  accepted.
+* Restore the old web interface.
+* Upload a (maybe specially packed) OpenWRT firmware via the normal web
+  interface.
+
+==== Preparation
+
+The binary must not be distributed outside of the firmware due to license
+reasons. So to be sure it's the right one a md5 check is necessary.
+
+----
+ubnt@airCube-ISP:/# md5sum /sbin/ubntbox 
+c33235322da5baca5a7b237c09bc8df1  /sbin/ubntbox
+----
+
+The BusyBox on the original system knows a `dd`. So let's try to use it to patch
+the binary. For reference: If patched with a hex editor on the PC the md5 sum is
+`994b91bdd47d0d4770f91487199af6e9`.
+
+----
+# Make a working copy for experiments
+ubnt@airCube-ISP:~# cd /tmp/
+ubnt@airCube-ISP:/tmp# cp /sbin/ubntbox .
+
+# Try to patch it
+ubnt@airCube-ISP:/tmp# echo -en '\x10' | dd of=ubntbox conv=notrunc bs=1 count=1 seek=24598
+1+0 records in
+1+0 records out
+ubnt@airCube-ISP:/tmp# md5sum ubntbox
+994b91bdd47d0d4770f91487199af6e9  ubntbox
+ubnt@airCube-ISP:/tmp#
+----
+
+Well, that was easy. Let's put it in a script.
+
+==== Creating the config
+
+Starting point is a a 2.5.0 setup with a factory default config. To make the
+configuration a bit more re-usable, the password is changed to an ultra secure
+`password`. Then just download configuration via the web interface. The result
+is a `.cfg` file which really is a tar gz archive. Change the name to something
+like `config.tgz`. After that it can be extracted. Now there is the following
+configuration file structure:
+
+----
+.
+├── dhcp
+├── dropbear
+├── firewall
+├── led
+├── linux
+│   ├── passwd
+│   ├── shadow
+│   └── version
+├── network
+├── rpcd
+├── system
+├── ubnt
+├── ubootenv
+├── udapi_bridge
+├── uhttpd
+├── upnpd
+└── wireless
+----
+
+The interesting one is `uhttpd` because it configures the web interface. In my
+earlier approach I replaced the original web interface. Let's try something
+different now: Add a second interface. Currently the file looks like follows:
+
+----
+config 'uhttpd' 'main'
+	list listen_http    0.0.0.0:80
+	list listen_http    [::]:80
+	list listen_https '0.0.0.0:443'
+	list listen_https '[::]:443'
+	option redirect_https   1
+	option 'home'        '/usr/www'
+	option ubus_prefix '/ubus'
+	option lua_prefix  '/api'
+	option lua_handler '/usr/lib/cgi/main'
+
+config cert defaults
+	option days '730'
+	option bits '1024'
+	option country 'US'
+	option state 'LA'
+	option location 'LA'
+	option commonname 'Ubiquiti'
+----
+
+We just need another section for a custom lua handler. Just put the following
+lines in front:
+
+----
+config 'uhttpd' 'other'
+	list listen_http    0.0.0.0:8080
+	list listen_http    [::]:8080
+	option 'home'       '/tmp/persistent/config/patch/www'
+	option lua_prefix   '/lua'
+	option lua_handler  '/tmp/persistent/config/patch/handler.lua'
+----
+
+This opens a second web server on port 8080. The files for it are in the
+`patch/www` sub directory of the configuration. Due to the fact that access
+rights are stripped when uploading a config, this directory is quite useless.
+The lua handler is in `patch/handler.lua`. It is called via
+`http://192.168.1.1/lua`.
+
+The lua handler is quite simple. It just executes a shell script that does
+the real work:
+
+.patch/handler.lua
+----
+function handle_request(env)
+    uhttpd.send("Status: 200 OK\r\n")
+    uhttpd.send("Content-Type: text/html\r\n\r\n")
+
+    local command = "/bin/sh /tmp/persistent/config/patch/patch.sh"
+
+    local proc = assert(io.popen(command))
+    for line in proc:lines() do
+        uhttpd.send(line.."\n")
+    end
+    proc:close()
+end
+----
+
+Now to the script. That one is really a lot of stuff.
+
+.patch/patch.sh
+----
+#!/bin/sh -x
+
+set -e
+set -u
+
+UBNTBOX="/sbin/ubntbox"
+MD5_ORG="c33235322da5baca5a7b237c09bc8df1"
+MD5_PATCHED="994b91bdd47d0d4770f91487199af6e9"
+
+# check md5
+MD5=`md5 ${UBNTBOX} | cut -f 1 -d " "`
+if [ "${MD5}" == "${MD5_PATCHED}" ]
+then
+	echo "******** System already patched ********"
+	exit 0
+fi
+
+if [ "${MD5}" <> "${MD5_ORG}" ]
+then
+	echo "******** Unknown ubntbox binary. Don't do anything. ********"
+	exit 0
+fi
+
+# add overlay for critical paths so we can patch the files
+LOWERDIR="/tmp/root"
+mkdir -p ${LOWERDIR}
+mount -t squashfs -oro /dev/mtdblock3 ${LOWERDIR}
+
+function overlay_some_path {
+	PATH_TO_OVERLAY=$1
+	ALIAS=$2
+	UPPERDIR="/tmp/overlay_${ALIAS}"
+	WORKDIR="/tmp/overlay_${ALIAS}_work"
+
+	mkdir -p ${UPPERDIR}
+	mkdir -p ${WORKDIR}
+
+	mount -t overlay -o lowerdir=${LOWERDIR}${PATH_TO_OVERLAY},upperdir=${UPPERDIR},workdir=${WORKDIR} overlay ${PATH_TO_OVERLAY}
+}
+
+overlay_some_path "/sbin" "sbin"
+
+# Patch the binary
+echo -en '\x10' | dd of=${UBNTBOX} conv=notrunc bs=1 count=1 seek=24598
+
+echo "******** Done ********"
+----
+
+All prepared. Repack everything into a `patch_signaturecheck_config.tgz`. Be
+careful not to add a extra file system layer but keep the original layout. Now
+upload the config via the web interface. Reboot the router and go to
+http://192.168.1.1:8080/lua. After that an unsigned firmware image will be
+accepted. Only problem left: Generating the right firmware image.
+
 == Status
 
 - working:
