@@ -6,7 +6,10 @@ set -x
 
 # This script has to do a lot of things:
 # - Patch the sysupgrade script in place. This is called from the web interface.
-# - Copy and patch some scripts from /lib/upgrade. They are used by sysupgrade.
+# - Patch some scripts from /lib/upgrade. Seems that the web interface somehow
+#   manages to use them in place.
+# - Copy /lib/upgrade to /tmp. That's the location where sysupgrade uses them
+#   later.
 # - Copy and patch fwupdate.real (which is a link to ubntbox) to skip the
 #   signature check. This is used by the patched /lib/upgrade scripts.
 
@@ -58,7 +61,8 @@ cp /sbin/fwupdate.real ${UBNTBOX_PATCHED}
 echo -en '\x10' | dd of=${UBNTBOX_PATCHED} conv=notrunc bs=1 count=1 seek=24598
 
 # Copy and patch the scripts
+overlay_some_path "/lib" "lib"
+sed -i "s|echo \"/sbin/fwupdate.real\"|echo \"${UBNTBOX_PATCHED}\"|g" /lib/upgrade/platform.sh
 cp -r /lib/upgrade ${LIB_UPGRADE_PATCHED}
-sed -i "s|echo \"/sbin/fwupdate.real\"|echo \"${UBNTBOX_PATCHED}\"|g" ${LIB_UPGRADE_PATCHED}/platform.sh
 
 echo "******** Done ********"
