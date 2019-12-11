@@ -1,0 +1,2 @@
+config udapi_bridge udapi_bridge
+#	option connection_string wss://example.net+pM1QAZ2BIKIQ5aGPFxZcC33GYkaKr4jcT2Oxt4CAilwPpHv9+allowSelfSignedCertificate

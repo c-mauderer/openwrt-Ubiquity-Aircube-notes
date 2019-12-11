@@ -1,0 +1,10 @@
+
+config hwctl 'hwctl'
+	option poe_pass '0'
+
+config mcagent 'mcagent'
+	option enable '0'
+
+config swctl 'swctl'
+	option check_beta_fw '0'
+

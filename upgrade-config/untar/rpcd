@@ -1,0 +1,5 @@
+config login 'rpcd'
+	option username 'ubnt'
+	option password '$p$ubnt'
+	list read '*'
+	list write '*'

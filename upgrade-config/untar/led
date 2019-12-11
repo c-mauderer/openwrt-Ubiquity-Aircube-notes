@@ -1,0 +1,4 @@
+config night 'night'
+	option enable	0
+	option start	1320
+	option end	480

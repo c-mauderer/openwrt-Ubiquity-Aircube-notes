@@ -1,0 +1,25 @@
+config 'uhttpd' 'other'
+	list listen_http    0.0.0.0:8080
+	list listen_http    [::]:8080
+	option 'home'       '/tmp/persistent/config/patch/www'
+	option lua_prefix   '/lua'
+	option lua_handler  '/tmp/persistent/config/patch/handler.lua'
+
+config 'uhttpd' 'main'
+	list listen_http    0.0.0.0:80
+	list listen_http    [::]:80
+	list listen_https '0.0.0.0:443'
+	list listen_https '[::]:443'
+	option redirect_https   1
+	option 'home'        '/usr/www'
+	option ubus_prefix '/ubus'
+	option lua_prefix  '/api'
+	option lua_handler '/usr/lib/cgi/main'
+
+config cert defaults
+	option days '730'
+	option bits '1024'
+	option country 'US'
+	option state 'LA'
+	option location 'LA'
+	option commonname 'Ubiquiti'
