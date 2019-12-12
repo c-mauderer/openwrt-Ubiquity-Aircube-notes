@@ -4,14 +4,7 @@ set -e
 set -u
 set -x
 
-# This script has to do a lot of things:
-# - Patch the sysupgrade script in place. This is called from the web interface.
-# - Copy and patch some scripts from /lib/upgrade. They are used by sysupgrade.
-# - Copy and patch fwupdate.real (which is a link to ubntbox) to skip the
-#   signature check. This is used by the patched /lib/upgrade scripts.
-
 UBNTBOX_PATCHED="/tmp/fwupdate.real"
-
 MD5FILE="/tmp/patchmd5"
 
 cat <<EOF > ${MD5FILE}
