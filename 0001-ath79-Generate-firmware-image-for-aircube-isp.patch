@@ -39,7 +39,7 @@ end
 ``````
 - Create a `patch/patch.sh` with the following content:
 ``````
- #!/bin/sh -x
+#!/bin/sh -x
 
 set -e
 set -u
@@ -52,14 +52,14 @@ cat <<EOF > ${MD5FILE}
 c33235322da5baca5a7b237c09bc8df1  /sbin/fwupdate.real
 EOF
 
- # check md5 of files that will be patched
+# check md5 of files that will be patched
 if ! md5sum -c ${MD5FILE}
 then
         echo "******** Error when checking files. Refuse to do anything. ********"
         exit 0
 fi
 
- # prepare some overlay functionality
+# prepare some overlay functionality
 LOWERDIR="/tmp/lower_root"
 mkdir -p ${LOWERDIR}
 mount -t squashfs -oro /dev/mtdblock3 ${LOWERDIR}
@@ -76,7 +76,7 @@ overlay_some_path()
         mount -t overlay -o lowerdir=${LOWERDIR}${PATH_TO_OVERLAY},upperdir=${UPPERDIR},workdir=${WORKDIR} overlay ${PATH_TO_OVERLAY}
 }
 
- # patch the ubntbox binary.
+# patch the ubntbox binary.
 overlay_some_path "/sbin" "sbin"
 echo -en '\x10' | dd of=/sbin/fwupdate.real conv=notrunc bs=1 count=1 seek=24598
 
