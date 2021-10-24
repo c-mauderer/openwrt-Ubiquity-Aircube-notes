@@ -1926,3 +1926,50 @@ interface accepts an unsigned binary.
 - missing:
   - LED
   - factory upgrade via web IF or TFTP recovery
+
+== 2021: New firmware > 2.8
+
+The manufacturer decided that it would be a good idea to update their signing
+keys for their firmware. With Firmware 2.8.0 they introduced a new U-Boot
+version that doesn't accept firmware that is signed with the old key. So as soon
+as a device has 2.8.0, it is not possible to downgrade it to 2.8.0 (which is
+still signed with the old key) or older. Only upgrades to 2.8.1 or newer are
+possible. 2.8.1 is not on their website. So all following analysis will be done
+on 2.8.3.
+
+=== Running the script
+
+For 2.5.0, a script has been injected via `uhttpd`. For the new version, they
+seem to use `lighttpd` for the web interface and as a https proxy to `uhttpd`
+for some API use cases. For that port 8080 is now used internally. But it seems
+that it is no problem to use (for example) port 8000 instead.
+
+=== ubntbox
+
+In 2.8.3 a different ubntbox is used. The patch for the 2.5 doesn't work any
+more. But with the same method that Snap used back for 2.5, it's not too hard to
+find a new patch: Now we need a 0x65 0x00 at address 0x6774:
+
+----
+> md5sum ubntbox
+f6b3a605704f3d8d8ed489f4a5f20584  ubntbox
+> echo -en '\x65\x00' | dd of=ubntbox conv=notrunc bs=1 count=2 seek=26484
+2+0 records in
+2+0 records out
+> md5sum ubntbox
+126e824822980f42fc46707e9c5203ad  ubntbox
+----
+
+That removes the signature check. But a second problem is that a firmware
+downgrade is not allowed. Unfortunately the OpenWRT image tells that it is a
+2.5.0 firmware. So we need a second patch: A 0x10 at address 0x63f2.
+
+----
+> echo -en '\x10' | dd of=ubntbox conv=notrunc bs=1 count=1 seek=25586
+1+0 records in
+1+0 records out
+> md5sum ubntbox
+63bf3d56f37f8403dfc3042abd620247  ubntbox
+----
+
+With these two adaptions, the remaining part works like before.
